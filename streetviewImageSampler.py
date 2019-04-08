@@ -1,11 +1,16 @@
-# TODO: Finish header comment.
-'''
+"""
 Google Street View Image Sampler
 November 2018
 Ashi Agrawal
-'''
+
+This tool allows a user to specify a shape and creates a folder with randomly selected Google Maps images from the given area.
+
+Example Call:
+python streetviewImageSampler.py shapefile -n 20 -s 5 -d directory
+"""
 
 import argparse
+import datetime
 import json
 import os
 import random
@@ -18,94 +23,140 @@ from shapely.geometry import shape, Point
 # Google Street View Image API
 # 25,000 image requests per 24 hours
 # See https://developers.google.com/maps/documentation/streetview/
-with open('keys.json') as json_data:
+with open("keys.json") as json_data:
     data = json.load(json_data)
-    API_KEY = data['api_key']
-GOOGLE_URL = "http://maps.googleapis.com/maps/api/streetview?size=640x640&key=" + API_KEY
+    API_KEY = data["api_key"]
 
-DIR_NAME = "StreetView_Images"
+GOOGLE_METADATA_URL = (
+    "https://maps.googleapis.com/maps/api/streetview/metadata?key=" + API_KEY
+)
+GOOGLE_URL = (
+    "http://maps.googleapis.com/maps/api/streetview?size=640x640&key=" + API_KEY
+)
+
+DIR_NAME = "StreetView_Images_" + datetime.datetime.now().strftime("%m.%d.%Y%H%M%S")
 IMG_PREFIX = "IMG_"
 IMG_SUFFIX = ".jpg"
 
-'''
-@fn: get_arguments()
-@description: Prompts user for the following arguments: shapefile (file path to shapefile), number of images wanted (optional), seed for random function (optional), directory to store images in (optional).
-@args: None
-@return: Namespace of user-provided arguments.
-'''
 def get_arguments():
+    """ Retrieve and parse user arguments.
+    description: Prompts user for the following arguments: shapefile (file path to shapefile), number of images wanted (optional, assumed to be 10), seed for random function (optional), directory to store images in (optional).
+    @return: Namespace of user-provided arguments.
+    """
     # TODO (Stretch): Allow users to customize the size of their images. Use parameters dict instead of curr manual creation of url.
-    # TODO (Stretch): Add more error checking of arguments.
     parser = argparse.ArgumentParser(
         description="Download random StreetView images within a given shape.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument("shapefile", nargs=1, help="File path to shapefile.")
+    parser.add_argument("-n", type=int, default=10, help="Number of images wanted.")
     parser.add_argument(
-        'shapefile', nargs=1, help="File path to shapefile.")
-    parser.add_argument(
-        '-n', type=int, default=10, help="Number of images wanted.")
-    parser.add_argument(
-        '-s', type=int, help="Initial seed for randomization of image location.")
-    parser.add_argument(
-        '-d', help="Directory to store the images in.")
+        "-s", type=int, help="Initial seed for randomization of image location."
+    )
+    parser.add_argument("-d", help="Directory to store the images in.")
     args = parser.parse_args()
     return args
 
-# TODO: Comment.
-# TODO: Add better error-checking here.
+def add_parameter(url, param_name, param_value):
+    """ Add parameter to URL.
+    description: Given a partially constructed URL in string format, adds a parameter to the end.
+    @url: String representation of URL.
+    @param_name: Name of parameter to add.
+    @param_value: Value of parameter to add.
+    @return: String URL with parameter.
+    """
+    if url[:-1] != "&":
+        url += "&"
+    url = url + param_name + "=" + param_value
+    return url
+
 def parse_shapefile(file_path):
+    """ Return shape information from shapefile.
+    description: Given a file path leading to a shapefile, opens the shapefile and returns information on the first shape in the file.
+    @file_path: File path to shapefile containing shape.
+    @return: Tuple of Shapely shape and bounding box.
+    """
     sf = shapefile.Reader(file_path)
     shapes = sf.shapes()
-    # TODO: Confirm expected functionality here.
-    '''
+    # TODO: Use the provided shape position or assume 0.
+    """
     if len(shapes) != 1:
         raise RuntimeError("Expect one shape per file.")
-    '''
-    return shapes[0]
+    """
+    return shape(shapes[0]), shapes[0].bbox
 
-# TODO: Comment.
-def print_log_file(points):
-    with open(os.path.join(DIR_NAME, 'log_file.txt'), 'w') as f:
-        for item in points:
-            # TODO: Format this correctly.
-            f.write("%s\n" % item)
+def check_image(point):
+    """ Determine if there is an image at a given point.
+    description: Query's Google Street View's Metadata endpoint to determine if there is an image at the given point. 
+    @point: Shapely point consisting of an x, y coordinate pair.
+    @return: Boolean.
+    """
+    metadata_url = add_parameter(
+        GOOGLE_METADATA_URL, "location", str(point.y) + "," + str(point.x)
+    )
+    r = requests.get(metadata_url, stream=True)
+    json = r.json()
+    if json["status"] == "OK":
+        return True
+    elif json["status"] == "ZERO_RESULTS":
+        return False
+    else:
+        raise RuntimeError("Failed to retrieve image metadata.")
+
+def pick_points(polygon, bounds, number):
+    """ Randomly pick points contained within polygon.
+    description: Using a uniform distribution, randomly and evenly pick points from within the polygon. If the polygon is shaped oddly, it may take a while to run as the bounding box may be much larger than the polygon. For most shapes, however, this should be relatively quick.
+    @polygon: Shapely shape object representing a shape.
+    @bounds: Bounding box around polygon.
+    @number: Number of coordinates to find.
+    @return: Array of x,y coordinates.
+    """
+    points = []
+    tried = []
+    while len(points) < number:
+        lon = random.uniform(bounds[0], bounds[2])
+        lat = random.uniform(bounds[1], bounds[3])
+        point = Point(lon, lat)
+        valid = (
+            polygon.contains(point) and point not in tried and check_image(point)
+        )
+        if valid:
+            points.append(point)
+        tried.append(point)
+    return points
+
+def print_log_file(dir_name, points):
+    """ Write and format point information to log file.
+    description: Given of array of points as input, writes to a text file in the same folder as images, detailing each image's latitude and longitude.
+    @dir_name: Directory to store log file in.
+    @points: Array of points (consisting of x and y coordinates), representing latitude/longitude, to log.
+    @return: None.
+    """
+    with open(os.path.join(dir_name, "log_file.txt"), "w") as f:
+        line_format = "Item {} has latitude {} and longitude {}.\n"
+        for idx, item in enumerate(points):
+            item_identifier = IMG_PREFIX + str(idx) + IMG_SUFFIX
+            f.write(line_format.format(item_identifier, str(item.y), str(item.x)))
     print("Log file written.")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     args = get_arguments()
-    given_shape = parse_shapefile(args.shapefile[0])
-    bounds = given_shape.bbox
-    print(bounds)
-    polygon = shape(given_shape)
-    points = []
+    polygon, bounds = parse_shapefile(args.shapefile[0])
     random.seed(args.s)
-    # TODO: What's a cleaner way to do this?
-    if args.d:
-        new_dir = os.path.join(args.d, DIR_NAME)
-    else:
-        new_dir = DIR_NAME
-    if os.path.exists(new_dir):
-        raise RuntimeError("Directory already exists. Please specify a new directory.")
+    if args.d is None:
+        args.d = ""
+    new_dir = os.path.join(args.d, DIR_NAME)
     os.makedirs(new_dir)
-    # TODO: Decompose.
-    for i in range(args.n):
-        point = Point(200, 200)
-        while(not polygon.contains(point) or point in points):
-            # TODO: Confirm that this ordering is correct.
-            lon = random.uniform(bounds[0], bounds[2])
-            lat = random.uniform(bounds[1], bounds[3])
-            point = Point(lon, lat)
-        # TODO: Figure out appropriate conversion from coords to lat/lon.
-        points.append(point)
-        url = GOOGLE_URL + "&location=" + str(point.x) + "," + str(point.y)
+    points = pick_points(polygon, bounds, args.n)
+    for idx, point in enumerate(points):
+        url = add_parameter(GOOGLE_URL, "location", str(point.y) + "," + str(point.x))
         r = requests.get(url, stream=True)
-        # TODO: Fix syntax.
-        '''
-        if r.status_code not 200:
-            raise RuntimeError("Failed to retrieve image " + str(i) + ".")
-        '''
-        save_location = os.path.join(new_dir, IMG_PREFIX + str(i) + IMG_SUFFIX)
-        with open(save_location, 'wb') as f:
+        if r.status_code != 200:
+            raise RuntimeError("Failed to retrieve image " + str(idx) + ".")
+        save_location = os.path.join(new_dir, IMG_PREFIX + str(idx) + IMG_SUFFIX)
+        with open(save_location, "wb") as f:
             r.raw.decode_content = True
             shutil.copyfileobj(r.raw, f)
-        print("Image " + str(i) + " saved.")
-    print_log_file(points)
+        print("Image " + str(idx) + " saved.")
+    print_log_file(new_dir, points)
