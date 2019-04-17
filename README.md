@@ -10,7 +10,7 @@ The Mind, Culture, and Society Lab at Stanford is interested in exploring the li
 
 To use the tool, you will need a shapefile outlining the shape that you would like to select images from. This shapefile needs to fit a couple of requirements:
 
-* (a) it should contain only one shape to sample from 
+* (a) it should contain at least one shape to sample from
 * (b) it should use EPSG 4326 (to work with the Google Maps database). You can use an online tool or the epsj-indent tool from the command-line to reproject the shapefile if necessary.
 * (c) the shape should be of type POLYGON. POINT and POLYLINE objects cannot be queried for random images.
 

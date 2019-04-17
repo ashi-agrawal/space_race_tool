@@ -49,7 +49,7 @@ def get_arguments():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("shapefile", nargs=1, help="File path to shapefile.")
-    parser.add_argument("-n", type=int, default=10, help="Number of images wanted.")
+    parser.add_argument("-n", type=int, default=10, help="Number of images wanted per shape.")
     parser.add_argument(
         "-s", type=int, help="Initial seed for randomization of image location."
     )
@@ -72,18 +72,16 @@ def add_parameter(url, param_name, param_value):
 
 def parse_shapefile(file_path):
     """ Return shape information from shapefile.
-    description: Given a file path leading to a shapefile, opens the shapefile and returns information on the first shape in the file.
+    description: Given a file path leading to a shapefile, opens the shapefile and returns information on all shapes in the file.
     @file_path: File path to shapefile containing shape.
-    @return: Tuple of Shapely shape and bounding box.
+    @return: Array of tuples of Shapely shape and bounding box.
     """
     sf = shapefile.Reader(file_path)
     shapes = sf.shapes()
-    # TODO: Use the provided shape position or assume 0.
-    """
-    if len(shapes) != 1:
-        raise RuntimeError("Expect one shape per file.")
-    """
-    return shape(shapes[0]), shapes[0].bbox
+    shapes_array = []
+    for item in shapes:
+        shapes_array.append((shape(item), item.bbox))
+    return shapes_array
 
 def check_image(point):
     """ Determine if there is an image at a given point.
@@ -117,6 +115,7 @@ def pick_points(polygon, bounds, number):
         lon = random.uniform(bounds[0], bounds[2])
         lat = random.uniform(bounds[1], bounds[3])
         point = Point(lon, lat)
+        print(point)
         valid = (
             polygon.contains(point) and point not in tried and check_image(point)
         )
@@ -142,21 +141,23 @@ def print_log_file(dir_name, points):
 
 if __name__ == "__main__":
     args = get_arguments()
-    polygon, bounds = parse_shapefile(args.shapefile[0])
     random.seed(args.s)
     if args.d is None:
         args.d = ""
-    new_dir = os.path.join(args.d, DIR_NAME)
-    os.makedirs(new_dir)
-    points = pick_points(polygon, bounds, args.n)
-    for idx, point in enumerate(points):
-        url = add_parameter(GOOGLE_URL, "location", str(point.y) + "," + str(point.x))
-        r = requests.get(url, stream=True)
-        if r.status_code != 200:
-            raise RuntimeError("Failed to retrieve image " + str(idx) + ".")
-        save_location = os.path.join(new_dir, IMG_PREFIX + str(idx) + IMG_SUFFIX)
-        with open(save_location, "wb") as f:
-            r.raw.decode_content = True
-            shutil.copyfileobj(r.raw, f)
-        print("Image " + str(idx) + " saved.")
-    print_log_file(new_dir, points)
+    shapes = parse_shapefile(args.shapefile[0])
+    for shape_idx, item in enumerate(shapes):
+        new_dir = os.path.join(args.d, DIR_NAME, str(shape_idx))
+        os.makedirs(new_dir)
+        polygon, bounds = item
+        points = pick_points(polygon, bounds, args.n)
+        for idx, point in enumerate(points):
+            url = add_parameter(GOOGLE_URL, "location", str(point.y) + "," + str(point.x))
+            r = requests.get(url, stream=True)
+            if r.status_code != 200:
+                raise RuntimeError("Failed to retrieve image " + str(idx) + ".")
+            save_location = os.path.join(new_dir, IMG_PREFIX + str(idx) + IMG_SUFFIX)
+            with open(save_location, "wb") as f:
+                r.raw.decode_content = True
+                shutil.copyfileobj(r.raw, f)
+            print("Image " + str(shape_idx) + "_" + str(idx) + " saved.")
+        print_log_file(new_dir, points)
