@@ -31,7 +31,7 @@ GOOGLE_METADATA_URL = (
     "https://maps.googleapis.com/maps/api/streetview/metadata?key=" + API_KEY
 )
 GOOGLE_URL = (
-    "http://maps.googleapis.com/maps/api/streetview?size=640x640&key=" + API_KEY
+    "http://maps.googleapis.com/maps/api/streetview?size=640x400&key=" + API_KEY
 )
 
 DIR_NAME = "StreetView_Images_" + datetime.datetime.now().strftime("%m.%d.%Y%H%M%S")
@@ -115,7 +115,6 @@ def pick_points(polygon, bounds, number):
         lon = random.uniform(bounds[0], bounds[2])
         lat = random.uniform(bounds[1], bounds[3])
         point = Point(lon, lat)
-        print(point)
         valid = (
             polygon.contains(point) and point not in tried and check_image(point)
         )
@@ -132,7 +131,8 @@ def print_log_file(dir_name, points):
     @return: None.
     """
     with open(os.path.join(dir_name, "log_file.txt"), "w") as f:
-        line_format = "Item {} has latitude {} and longitude {}.\n"
+        line_format = "{}, {}, {}\n"
+        f.write(line_format.format("item", "latitude", "longitude"))
         for idx, item in enumerate(points):
             item_identifier = IMG_PREFIX + str(idx) + IMG_SUFFIX
             f.write(line_format.format(item_identifier, str(item.y), str(item.x)))
@@ -155,7 +155,7 @@ if __name__ == "__main__":
             r = requests.get(url, stream=True)
             if r.status_code != 200:
                 raise RuntimeError("Failed to retrieve image " + str(idx) + ".")
-            save_location = os.path.join(new_dir, IMG_PREFIX + str(idx) + IMG_SUFFIX)
+            save_location = os.path.join(new_dir, IMG_PREFIX + str(idx) + "_" + str(shape_idx) + IMG_SUFFIX)
             with open(save_location, "wb") as f:
                 r.raw.decode_content = True
                 shutil.copyfileobj(r.raw, f)
