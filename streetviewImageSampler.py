@@ -134,7 +134,7 @@ def print_log_file(dir_name, points):
         line_format = "{}, {}, {}\n"
         f.write(line_format.format("item", "latitude", "longitude"))
         for idx, item in enumerate(points):
-            item_identifier = IMG_PREFIX + str(idx) + IMG_SUFFIX
+            item_identifier = IMG_PREFIX + str(idx)+ "_" + str(shape_idx) + IMG_SUFFIX
             f.write(line_format.format(item_identifier, str(item.y), str(item.x)))
     print("Log file written.")
 
