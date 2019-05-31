@@ -13,6 +13,7 @@ import argparse
 import datetime
 import json
 import os
+import pandas as pd
 import random
 import requests
 import shapefile
@@ -54,6 +55,7 @@ def get_arguments():
         "-s", type=int, help="Initial seed for randomization of image location."
     )
     parser.add_argument("-d", help="Directory to store the images in.")
+    parser.add_argument("-i", help="File path to .csv containing indices of shapes to use.")
     args = parser.parse_args()
     return args
 
@@ -70,17 +72,24 @@ def add_parameter(url, param_name, param_value):
     url = url + param_name + "=" + param_value
     return url
 
-def parse_shapefile(file_path):
+def parse_shapefile(file_path, csv_file):
     """ Return shape information from shapefile.
-    description: Given a file path leading to a shapefile, opens the shapefile and returns information on all shapes in the file.
+    description: Given a file path leading to a shapefile, opens the shapefile and returns information on the shapes corresponding to the csv indices.
     @file_path: File path to shapefile containing shape.
-    @return: Array of tuples of Shapely shape and bounding box.
+    @csv_file: File path to a csv with two columns: index and include. This method will select only the indices where there is a 1 in the include column. If file path is None, will select all indices.
+    @return: Array of tuples of index, Shapely shape, and bounding box.
     """
     sf = shapefile.Reader(file_path)
     shapes = sf.shapes()
+    if csv_file is None:
+        indices = list(range(len(shapes)))
+    else:
+        df = pd.read_csv(csv_file)
+        indices = list(df.loc[(df['include'] == 1), 'index'])
     shapes_array = []
-    for item in shapes:
-        shapes_array.append((shape(item), item.bbox))
+    for idx in indices:
+        item = shapes[idx]
+        shapes_array.append((idx, shape(item), item.bbox))
     return shapes_array
 
 def check_image(point):
@@ -144,11 +153,10 @@ if __name__ == "__main__":
     random.seed(args.s)
     if args.d is None:
         args.d = ""
-    shapes = parse_shapefile(args.shapefile[0])
-    for shape_idx, item in enumerate(shapes):
+    shapes = parse_shapefile(args.shapefile[0], args.i)
+    for shape_idx, polygon, bounds in shapes:
         new_dir = os.path.join(args.d, DIR_NAME, str(shape_idx))
         os.makedirs(new_dir)
-        polygon, bounds = item
         points = pick_points(polygon, bounds, args.n)
         for idx, point in enumerate(points):
             url = add_parameter(GOOGLE_URL, "location", str(point.y) + "," + str(point.x))
