@@ -11,6 +11,7 @@ python streetviewImageSampler.py shapefile -n 20 -s 5 -d directory
 
 import argparse
 import datetime
+import dbf
 import json
 import os
 import pandas as pd
@@ -147,6 +148,19 @@ def print_log_file(dir_name, points):
             f.write(line_format.format(item_identifier, str(item.y), str(item.x)))
     print("Log file written.")
 
+def print_dbf_file(filename, results_dir):
+    """ Write information from dbf file to .csv.
+    description: Given a path from the user to a shapefile, reads the corresponding .dbf file and writes the information to a .csv.
+    @filename: User-given shapefile given.
+    @results_dir: High-level directory storing all results of run.
+    @return: None.
+    """
+    dbf_file = os.path.splitext(filename)[0] + ".dbf"
+    table = dbf.Table(dbf_file)
+    table.open()
+    output_file = os.path.join(results_dir, "dbf_info.csv")
+    dbf.export(table, filename=output_file)
+    print("DBF information written.")
 
 if __name__ == "__main__":
     args = get_arguments()
@@ -154,8 +168,9 @@ if __name__ == "__main__":
     if args.d is None:
         args.d = ""
     shapes = parse_shapefile(args.shapefile[0], args.i)
+    results_dir = os.path.join(args.d, DIR_NAME)
     for shape_idx, polygon, bounds in shapes:
-        new_dir = os.path.join(args.d, DIR_NAME, str(shape_idx))
+        new_dir = os.path.join(results_dir, str(shape_idx))
         os.makedirs(new_dir)
         points = pick_points(polygon, bounds, args.n)
         for idx, point in enumerate(points):
@@ -169,3 +184,4 @@ if __name__ == "__main__":
                 shutil.copyfileobj(r.raw, f)
             print("Image " + str(shape_idx) + "_" + str(idx) + " saved.")
         print_log_file(new_dir, points)
+    print_dbf_file(args.shapefile[0], results_dir)
